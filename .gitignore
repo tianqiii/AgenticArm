@@ -1,0 +1,24 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local runtime / secrets
+.env
+sessions.json
+sessions.json.*
+trace.jsonl
+traces/
+reports/
+
+# others
+.codegraph/
+.omc/
+.pytest_cache/
+assets/

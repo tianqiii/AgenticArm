@@ -1,0 +1,46 @@
+[project]
+name = "arm-agent-demo"
+version = "0.1.0"
+description = "Natural-language robot arm agent with MuJoCo and DeepSeek"
+readme = "README.md"
+authors = [
+    { name = "Bao_nini", email = "102462532+tianqiii@users.noreply.github.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "mink>=1.4.0",
+    "mujoco>=4.0.1",
+    "mujoco-menagerie>=2026.11.3",
+    "numpy>=2.4.6",
+    "requests>=2.34.2",
+]
+
+[project.scripts]
+arm-agent-demo = "arm_agent_demo.main:main"
+arm-agent-eval = "eval.eval_runner:main"
+
+[[tool.uv.index]]
+url = "https://pypi.mirrors.ustc.edu.cn/simple"
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple"
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+[build-system]
+requires = ["uv_build>=0.12.21,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+markers = [
+    "e2e: tests that call the real DeepSeek API",
+    "slow: tests that take more than a few seconds",
+]
