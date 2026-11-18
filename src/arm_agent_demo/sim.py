@@ -82,55 +82,94 @@ TARGETS = {
 
 class Sim:
     def __init__(self, gui=True, seed=0):
-        """加载完整场景 + 机器人本体模型（后者给 mink 做 IK）。"""
+        """加载完整场景 + 机器人本体模型（后者给 mink 做 IK）。
+
+        gui=False 时完全不创建 viewer，适合 headless 评测。
+        seed 预留给评测里的初始位姿抖动（DESIGN 6.3）；MuJoCo 物理本身是确定性的。
+        """
         if not SCENE_XML.exists():
             raise FileNotFoundError(
                 f"缺少 MuJoCo 场景：{SCENE_XML}\n"
                 "先按 README 把 Menagerie 的 franka_emika_panda 复制到 assets/ 下。"
             )
 
-        # TODO: self.gui = gui；self.client / self.viewer 初始化
-        # TODO: self.model = mujoco.MjModel.from_xml_path(str(SCENE_XML))
-        # TODO: self.data = mujoco.MjData(self.model)
-        # TODO: self.ik_model = mujoco.MjModel.from_xml_path(str(PANDA_XML))
-        # TODO: self.ik_data = mujoco.MjData(self.ik_model)
-        # TODO: if gui: self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
-        #        else: self.viewer = None
-        # TODO: self._inspect_model()
-        # TODO: self.initial_poses = {name: spec["position"][:] for name, spec in OBJECTS.items()}
-        # TODO: self.reset()
-        raise NotImplementedError("Sim.__init__ 待实现（按上面的 TODO 顺序）")
+        self.gui = gui
+        self.seed = seed
+
+        # 两个模型分工：
+        # - scene_pick_place.xml 负责物理：包含 3 个方块的 free joint 和 2 个静态盘子；
+        # - panda.xml 只含机器人本体，给 mink 解 IK，避免 IK 为了达标去移动自由物体。
+        self.model = mujoco.MjModel.from_xml_path(str(SCENE_XML))
+        self.data = mujoco.MjData(self.model)
+        self.ik_model = mujoco.MjModel.from_xml_path(str(PANDA_XML))
+        self.ik_data = mujoco.MjData(self.ik_model)
+
+        if gui:
+            # 延迟导入：headless 环境不需要 GLFW，避免无显示设备时 import 失败。
+            # 注意用 from-import：`import mujoco.viewer` 会把 mujoco 变成局部名，
+            # 导致本函数前面的 mujoco.MjModel 报 UnboundLocalError。
+            from mujoco import viewer
+
+            self.viewer = viewer.launch_passive(self.model, self.data)
+        else:
+            self.viewer = None
+
+        self._inspect_model()
+
+        # 深拷贝：OBJECTS 是模块级常量，reset 时不能原地修改它
+        self.initial_poses = {
+            name: list(spec["position"]) for name, spec in OBJECTS.items()
+        }
+        self.reset()
 
     def _inspect_model(self) -> None:
-        """缓存 hand body、物体 body、自由关节 qpos/dof 地址。"""
-        # TODO: self.hand_id = mujoco.mj_name2id(
-        #           self.model, mujoco.mjtObj.mjOBJ_BODY, "hand")
-        # TODO: self.object_body_ids = {
-        #           name: mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, name)
-        #           for name in OBJECTS}
-        # TODO: self.object_joint_qpos = {}
-        #       self.object_joint_dof = {}
-        #       for name in OBJECTS:
-        #           jid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"{name}_joint")
-        #           self.object_joint_qpos[name] = self.model.jnt_qposadr[jid]
-        #           self.object_joint_dof[name] = self.model.jnt_dofadr[jid]
-        raise NotImplementedError("Sim._inspect_model 待实现")
+        """缓存 hand body、物体 body、自由关节 qpos/dof 地址。
+
+        id 和地址在模型加载后不变，缓存下来避免每步按名字查表。
+        """
+        self.hand_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "hand")
+        if self.hand_id < 0:
+            raise RuntimeError("场景里找不到 body `hand`，请检查 Menagerie Panda 模型")
+
+        self.object_body_ids = {}
+        self.object_joint_qpos = {}
+        self.object_joint_dof = {}
+        for name in OBJECTS:
+            body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, name)
+            joint_id = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_JOINT, f"{name}_joint"
+            )
+            if body_id < 0 or joint_id < 0:
+                raise RuntimeError(
+                    f"场景缺少物体 `{name}` 或关节 `{name}_joint`，"
+                    "请检查 scene_pick_place.xml 与 OBJECTS 是否一致"
+                )
+            self.object_body_ids[name] = body_id
+            self.object_joint_qpos[name] = self.model.jnt_qposadr[joint_id]
+            self.object_joint_dof[name] = self.model.jnt_dofadr[joint_id]
 
     def reset(self) -> None:
-        """回 home、物体回初始位姿、清速度/外力。"""
-        # TODO: mujoco.mj_resetData(self.model, self.data)
-        # TODO: self.data.qpos[ARM_QPOS] = HOME_QPOS
-        # TODO: self.data.qpos[7:9] = HOME_FINGERS
-        # TODO: self.data.ctrl[:7] = HOME_QPOS
-        # TODO: self.data.ctrl[GRIPPER_CTRL] = GRIPPER_OPEN
-        # TODO: 对每个物体：
-        #           adr = self.object_joint_qpos[name]
-        #           self.data.qpos[adr:adr+3] = initial_poses[name]
-        #           self.data.qpos[adr+3:adr+7] = [1, 0, 0, 0]  # wxyz
-        #           self.data.qvel[self.object_joint_dof[name]:+6] = 0
-        # TODO: mujoco.mj_forward(self.model, self.data)
-        # TODO: self.step(SETTLE_STEPS)
-        raise NotImplementedError("Sim.reset 待实现")
+        """回 home、物体回初始位姿、清速度/外力。
+
+        顺序很重要：先写 qpos/ctrl，再 mj_forward 让 xpos 等派生量生效，
+        最后空跑 SETTLE_STEPS 让方块落稳（此时夹爪保持打开）。
+        """
+        mujoco.mj_resetData(self.model, self.data)
+
+        self.data.qpos[ARM_QPOS] = HOME_QPOS
+        self.data.qpos[7:9] = HOME_FINGERS
+        self.data.ctrl[:7] = HOME_QPOS
+        self.data.ctrl[GRIPPER_CTRL] = GRIPPER_OPEN
+
+        for name, position in self.initial_poses.items():
+            adr = self.object_joint_qpos[name]
+            self.data.qpos[adr : adr + 3] = position
+            self.data.qpos[adr + 3 : adr + 7] = [1.0, 0.0, 0.0, 0.0]  # wxyz，无旋转
+            dof = self.object_joint_dof[name]
+            self.data.qvel[dof : dof + 6] = 0.0
+
+        mujoco.mj_forward(self.model, self.data)
+        self.step(SETTLE_STEPS)
 
     def step(self, n: int = 1) -> None:
         for _ in range(n):
@@ -172,6 +211,13 @@ class Sim:
         if body_id < 0:
             raise ValueError(f"未知物体：{name}；可用：{', '.join(OBJECTS)}")
         return tuple(self.data.xpos[body_id])
+
+    def object_quaternion(self, name: str) -> tuple[float, float, float, float]:
+        """可抓取物体的朝向（wxyz）。运动学吸附需要和位置一起读写。"""
+        if name not in self.object_joint_qpos:
+            raise ValueError(f"未知物体：{name}；可用：{', '.join(OBJECTS)}")
+        adr = self.object_joint_qpos[name]
+        return tuple(self.data.qpos[adr + 3 : adr + 7])
 
     def set_object_pose(self, name: str, position, quaternion=(1.0, 0.0, 0.0, 0.0)) -> None:
         """运动学吸附时用：直接写自由关节 qpos。"""

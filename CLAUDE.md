@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 自然语言机械臂 Agent：DeepSeek 负责规划（function calling），MuJoCo 做物理仿真，技能层用 mink 微分 IK 执行确定性的抓取/放置。设计依据是 `DESIGN.md`，核心为第 5 章（中间层契约）和第 6 章（评测体系）。
 
-**当前是骨架状态**：`sim.py`、`utils/skills.py`、`eval_*.py` 的核心函数是带 TODO 注释的 `NotImplementedError`；Agent 层（`llm.py / memory.py / harness.py`）和 CLI 已可用。`Sim.__init__` 实现前，`--scripted` 和自然语言模式都会抛 `NotImplementedError`，这是预期行为，不是环境坏了。
+核心链路已实现：`sim.py`、`utils/skills.py`、`eval_*.py` 均可用；`uv run arm-agent-demo --no-gui --scripted` 可在 headless 下跑通红块→蓝盘（约 1 秒）。自然语言模式需要 `DEEPSEEK_API_KEY`。抓取目前是**运动学吸附**（直接写物体 qpos），不是摩擦抓取。
 
 代码注释、docstring、CLI 提示、设计文档统一用中文。
 
@@ -54,14 +54,14 @@ pytest 标记：`e2e`（真实 DeepSeek API）、`slow`；`pythonpath = ["src"]`
 
 - `nq=30`、`nu=8`；keyframe：Menagerie 的 `home` 只有 9 个 qpos，本项目的 `scene_home` 有完整 30 个。
 - 夹爪 ctrl 范围是 **0–255：255 开、0 合**（不是 0–0.04）。
-- 末端帧用 body `hand`，Menagerie Panda 没有 grasp site。
+- 末端帧用 body `hand`，Menagerie Panda 没有 grasp site；指尖 TCP 在 hand 局部 z≈0.10 m 处（finger body 0.0584 + 指垫约 0.04）。
+- 抓取用运动学吸附：`Skills._sync_held` 每步把物体位姿写成 hand 位姿 × offset，物体不受碰撞/摩擦影响。这是 MVP 简化，报告里必须标注。
 - mink 1.4 没有 `SO3.from_quaternion_xyzw`；默认保持当前 `hand` 姿态最稳。
 - 修改 `mink.Configuration` 的 q 后必须 `config.update(q)`，否则运动学仍是 qpos0。
 - GUI 走 GLFW；Wayland/niri 下可能需要 Xwayland，headless 评测不受影响。
 
 ## 现状说明
 
-- 实现顺序见 README：`sim.py` → `skills.py` → 用 `--scripted` 跑通红块→蓝盘 → tools/harness → eval。
-- README 提到的 `src/arm_agent_demo/skills.py` 在当前工作区已不存在；active 技能文件是 `src/utils/skills.py`。
+- 评测任务集目前 8 条（`eval_tasks.py`），后续按 DESIGN 第 6 章扩到 20/50 条；技能契约、对抗和 E2E 测试仍需补。
 - `core/`、`utils/`、`eval/` 没有 `__init__.py`（命名空间包），导入方式是 `from core.harness import ...`、`from utils import tools`、`from eval.eval_runner import ...`。
 - `sessions.json`、`trace.jsonl`、`.env`、`reports/` 均被 gitignore。

@@ -4,6 +4,16 @@ import argparse
 import json
 from dataclasses import asdict
 
+try:
+    import readline  # 导入即启用 input() 的行编辑（退格、Ctrl-A/E 等）
+except ImportError:  # 非 POSIX 平台没有 readline
+    pass
+else:
+    # 部分终端把 Backspace 发成 Ctrl-H (0x08)，而 libedit 后端默认只绑定
+    # DEL (0x7F)，表现为退格键清不掉字符。这里补一条 libedit 绑定。
+    if "EditLine" in getattr(readline, "_READLINE_LIBRARY_VERSION", ""):
+        readline.parse_and_bind("bind ^H ed-delete-prev-char")
+
 from arm_agent_demo.sim import Sim
 from core.harness import Harness
 from core.llm import LLM

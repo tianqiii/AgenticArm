@@ -22,3 +22,6 @@ reports/
 .omc/
 .pytest_cache/
 assets/
+
+# MuJoCo runtime log
+MUJOCO_LOG.TXT

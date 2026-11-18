@@ -2,7 +2,7 @@
 
 本地仿真的自然语言机械臂 Agent：DeepSeek 做任务规划，**MuJoCo** 做物理仿真，技能层负责确定性的抓取/移动/放置。
 
-当前是**骨架状态**：`sim.py / skills.py / eval_*.py` 的核心函数留了 TODO，按注释手敲；Agent 层（`llm.py / memory.py / harness.py`）已复用并适配。
+核心链路已实现：`--scripted` 可在 headless 下跑通红块→蓝盘；评测 runner 与指标也已就位。自然语言模式需要 DeepSeek API。抓取目前是运动学吸附，不是摩擦抓取。
 
 设计文档见 **[DESIGN.md](./DESIGN.md)**，核心是第 5 章（中间层契约）和第 6 章（评测体系）。
 
@@ -49,7 +49,7 @@ uv run arm-agent-demo --help
 uv run arm-agent-demo --scripted        # 不接 LLM，跑硬编码 pick-and-place
 uv run arm-agent-demo "把红色方块放到蓝色盘子里"
 uv run arm-agent-demo                   # 交互模式
-uv run arm-agent-eval --limit 3         # 评测（待 eval_runner 实现）
+uv run arm-agent-eval --limit 3         # 评测（需要 DEEPSEEK_API_KEY）
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q -m "not e2e"   # 快速测试
 ```
 
@@ -57,21 +57,19 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q -m "not e2e"   # 快速测试
 
 | 文件 | 职责 | 状态 |
 |---|---|---|
-| `src/arm_agent_demo/sim.py` | MuJoCo 场景、Panda、物体、reset、真值 | 骨架 |
-| `src/utils/skills.py` | mink IK + home / grasp / release / pick_and_place | 骨架 |
-| `src/utils/tools.py` | LLM 可见工具 + schema + bind | 接口已定 |
+| `src/arm_agent_demo/sim.py` | MuJoCo 场景、Panda、物体、reset、真值 | 已实现 |
+| `src/utils/skills.py` | mink IK + home / grasp / release / pick_and_place | 已实现（运动学吸附） |
+| `src/utils/tools.py` | LLM 可见工具 + schema + bind | 已接好 |
 | `src/core/harness.py` | ReAct 循环 + 终态工具 + trace | 已适配 |
 | `src/core/llm.py` | DeepSeek / OpenAI 兼容客户端 | 已复用 |
 | `src/core/memory.py` | JSON 会话记忆 | 已复用 |
 | `src/arm_agent_demo/main.py` | CLI | 已接好 |
-| `src/eval/eval_tasks.py` | 8 条示例任务 | 骨架 |
-| `src/eval/eval_runner.py` | 评测 runner | 骨架 |
-| `src/eval/eval_metrics.py` | Wilson CI / pass@k / 汇总 | 骨架 |
+| `src/eval/eval_tasks.py` | 8 条示例任务 | 已就位，可扩充 |
+| `src/eval/eval_runner.py` | 评测 runner | 已实现 |
+| `src/eval/eval_metrics.py` | Wilson CI / pass@k / 汇总 | 已实现 |
 | `assets/franka_emika_panda/` | Menagerie Panda + 本项目场景 | 已就位 |
 
-> `src/arm_agent_demo/skills.py` 是重构前留下的 MuJoCo 副本；当前 active 的是 `src/utils/skills.py`，可删除。
-
-## 建议实现顺序
+## 实现顺序（已完成，留作复习）
 
 1. **`src/arm_agent_demo/sim.py`**：`__init__` → `_inspect_model` → `reset`；GUI 里看到 Panda + 3 方块 + 2 盘。
    - 物体位置在 `OBJECTS` 和 `scene_pick_place.xml` 里要一致。
@@ -94,8 +92,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q -m "not e2e"   # 快速测试
 ## 已知限制
 
 - `assets/` 里的 36MB 模型是 vendored；可以提交，也可以加到 `.gitignore` 后用上面的命令重建。
-- 当前 `sim.py` 未实现前，`--scripted` 和自然语言模式都会抛 `NotImplementedError`，这是骨架的预期行为。
+- 抓取是运动学吸附（直接写物体 qpos），不是摩擦抓取；成功率会被高估，报告里需标注。
 - MuJoCo viewer 走 GLFW；Wayland/niri 下可能要 Xwayland，headless 评测不受影响。
 - 系统 ROS 2 Lyrical 的 pytest 插件（Python 3.14 的 `launch_testing`）会被自动加载，和 3.11 venv 冲突；测试时用 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`。
-- `src/arm_agent_demo/skills.py` 是重构前副本，active 文件是 `src/utils/skills.py`。
 - C++ 控制层是第二阶段；v1 全 Python，边界留在 `skills.py`。
